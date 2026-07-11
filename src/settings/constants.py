@@ -1,4 +1,5 @@
 VK_ICON_PNG = "https://pics.freeicons.io/uploads/icons/png/2349032111566470622-512.png"
+VK_ME = "https://vk.me/"
 
 NEW_MESSAGE_EVENT: int = 4
 OUTBOX_FLAG: int = 2

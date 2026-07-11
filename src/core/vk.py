@@ -8,6 +8,7 @@ from src.core.exceptions import VKAPIError, VKAuthError
 from src.settings.config import settings
 from src.settings.constants import (
     VK_ICON_PNG,
+    VK_ME,
     NEW_MESSAGE_EVENT,
     OUTBOX_FLAG,
     AUTH_ERROR_CODES,
@@ -27,7 +28,7 @@ class VKListener():
         self._token = token
         self._bark = bark
         self._session = session()
-        self._senders_cache: dict[int, tuple[str, str]] = {}
+        self._senders_cache: dict[int, tuple[str, str, str]] = {}
 
     def _method(self, method: str, **params) -> dict | list:
         params |= {"access_token": self._token, "v": self._api_version}
@@ -53,21 +54,23 @@ class VKListener():
     def _get_long_poll_server(self) -> dict:
         return self._method("messages.getLongPollServer", lp_version=3)
 
-    def _get_sender(self, from_id: int) -> tuple[str, str]:
+    def _get_sender(self, from_id: int) -> tuple[str, str, str]:
         if from_id in self._senders_cache:
             return self._senders_cache[from_id]
         name, icon = str(from_id), VK_ICON_PNG
+        screen_name = f"id{from_id}" if from_id > 0 else f"club{-from_id}"
         try:
             if from_id > 0:
                 users: list = self._method(
                     "users.get",
                     user_ids=from_id,
-                    fields="photo_100",
+                    fields="photo_100,screen_name",
                 )
                 if users:
                     user: dict = users[0]
                     name = f"{user['first_name']} {user['last_name']}"
                     icon = user.get("photo_100") or VK_ICON_PNG
+                    screen_name = user.get("screen_name") or screen_name
             else:
                 response = self._method("groups.getById", group_id=-from_id)
                 groups = response.get("groups", response) if isinstance(response, dict) else response
@@ -75,13 +78,15 @@ class VKListener():
                     group: dict = groups[0]
                     name = group["name"]
                     icon = group.get("photo_100") or VK_ICON_PNG
+                    screen_name = group.get("screen_name") or screen_name
         except VKAuthError:
             raise
         except VKAPIError as error:
             logger.warning(f"Не удалось получить данные отправителя {from_id}: {error}")
-            return name, icon
-        self._senders_cache[from_id] = (name, icon)
-        return name, icon
+            return name, icon, f"{VK_ME}{screen_name}"
+        sender = (name, icon, f"{VK_ME}{screen_name}")
+        self._senders_cache[from_id] = sender
+        return sender
 
     def _handle_update(self, update: list) -> None:
         if not update or update[0] != NEW_MESSAGE_EVENT:
@@ -94,9 +99,9 @@ class VKListener():
         if not items:
             return
         message: dict = items[0]
-        name, icon = self._get_sender(message["from_id"])
+        name, icon, url = self._get_sender(message["from_id"])
         body = message.get("text") or "Вложение"
-        self._bark.notification(title=name, body=body, icon=icon)
+        self._bark.notification(title=name, body=body, icon=icon, url=url)
         logger.info(f"Новое сообщение от {name}: {body}")
 
     def _poll(self) -> None:

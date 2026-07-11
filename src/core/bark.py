@@ -6,6 +6,7 @@ from loguru import logger
 from src.settings.config import settings
 from src.settings.constants import (
     VK_ICON_PNG,
+    VK_ME,
     REQUEST_TIMEOUT,
 )
 
@@ -23,12 +24,13 @@ class Bark():
         body: str,
         *,
         icon: str = VK_ICON_PNG,
+        url: str = VK_ME,
     ) -> dict | None:
-        url = f"{self._url}/{self._token}/{quote(title, safe='')}/{quote(body, safe='')}"
+        request_url = f"{self._url}/{self._token}/{quote(title, safe='')}/{quote(body, safe='')}"
         try:
             response = self._session.get(
-                url,
-                params={"icon": icon},
+                request_url,
+                params={"icon": icon, "url": url},
                 timeout=REQUEST_TIMEOUT,
             )
         except RequestException as error:
