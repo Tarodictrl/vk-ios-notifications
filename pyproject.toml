@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "vk-ios-notifications"
+version = "1.0.0"
+description = "Пересылает новые сообщения ВКонтакте в push-уведомления на iOS через Bark"
+authors = ["Daniil Detter <58367115+Tarodictrl@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pydantic = "^2.13.4"
+pydantic-settings = "^2.14.2"
+requests = "^2.34.2"
+loguru = "^0.7.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

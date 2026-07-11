@@ -1,0 +1,11 @@
+VK_ICON_PNG = "https://pics.freeicons.io/uploads/icons/png/2349032111566470622-512.png"
+
+NEW_MESSAGE_EVENT: int = 4
+OUTBOX_FLAG: int = 2
+AUTH_ERROR_CODES: tuple[int, ...] = (5, 1117)
+
+REQUEST_TIMEOUT: int = 30
+LONG_POLL_WAIT: int = 25
+RECONNECT_DELAY: int = 5
+MAX_RECONNECT_DELAY: int = 300
+STABLE_CONNECTION_TIME: int = 60
