@@ -5,12 +5,17 @@ from loguru import logger
 
 from src.core.bark import Bark
 from src.core.exceptions import VKAPIError, VKAuthError
+from src.core.enums import (
+    VKPoolFailedStatuses,
+    VKPollEvents,
+    VKPollFlags,
+)
 from src.settings.config import settings
 from src.settings.constants import (
     VK_ICON_PNG,
     VK_ME,
-    NEW_MESSAGE_EVENT,
-    OUTBOX_FLAG,
+    VK_IM,
+    CHAT_ID_OFFSET,
     AUTH_ERROR_CODES,
     REQUEST_TIMEOUT,
     LONG_POLL_WAIT,
@@ -54,6 +59,28 @@ class VKListener():
     def _get_long_poll_server(self) -> dict:
         return self._method("messages.getLongPollServer", lp_version=3)
 
+    def _get_conversation(self, peer_id: int) -> dict:
+        try:
+            response: dict = self._method(
+                "messages.getConversationsById",
+                peer_ids=peer_id,
+            )
+        except VKAuthError:
+            raise
+        except VKAPIError as error:
+            logger.warning(f"Не удалось получить данные диалога {peer_id}: {error}")
+            return {}
+        items: list[dict] = response.get("items", [])
+        return items[0] if items else {}
+
+    @staticmethod
+    def _is_muted(conversation: dict) -> bool:
+        push_settings: dict = conversation.get("push_settings") or {}
+        if push_settings.get("disabled_forever"):
+            return True
+        disabled_until = push_settings.get("disabled_until") or 0
+        return disabled_until == -1 or disabled_until > time.time()
+
     def _get_sender(self, from_id: int) -> tuple[str, str, str]:
         if from_id in self._senders_cache:
             return self._senders_cache[from_id]
@@ -89,17 +116,27 @@ class VKListener():
         return sender
 
     def _handle_update(self, update: list) -> None:
-        if not update or update[0] != NEW_MESSAGE_EVENT:
+        if not update or update[0] != VKPollEvents.NEW_MESSAGE_EVENT:
             return
         message_id, flags = update[1], update[2]
-        if flags & OUTBOX_FLAG:
+        if flags & VKPollFlags.OUTBOX:
             return
         response: dict = self._method("messages.getById", message_ids=message_id)
         items: list = response.get("items", [])
         if not items:
             return
         message: dict = items[0]
+        peer_id = message.get("peer_id") or 0
+        conversation = self._get_conversation(peer_id) if peer_id else {}
+        if self._is_muted(conversation):
+            logger.info(f"Уведомления в диалоге {peer_id} отключены, пропускаю сообщение")
+            return
         name, icon, url = self._get_sender(message["from_id"])
+        if peer_id >= CHAT_ID_OFFSET:
+            chat_settings: dict = conversation.get("chat_settings") or {}
+            chat_photo: dict = chat_settings.get("photo") or {}
+            icon = chat_photo.get("photo_100") or icon
+            url = f"{VK_IM}c{peer_id - CHAT_ID_OFFSET}"
         body = message.get("text") or "Вложение"
         self._bark.notification(title=name, body=body, icon=icon, url=url)
         logger.info(f"Новое сообщение от {name}: {body}")
@@ -122,10 +159,10 @@ class VKListener():
             )
             response_json: dict = response.json()
             failed = response_json.get("failed")
-            if failed == 1:
+            if failed == VKPoolFailedStatuses.EVENT_EXPIRED:
                 server["ts"] = response_json["ts"]
                 continue
-            if failed in (2, 3):
+            if failed in (VKPoolFailedStatuses.KEY_EXPIRED, VKPoolFailedStatuses.USER_DATA_EXPIRED):
                 logger.info("Ключ Long Poll устарел, получаю новый")
                 server = self._get_long_poll_server()
                 continue
