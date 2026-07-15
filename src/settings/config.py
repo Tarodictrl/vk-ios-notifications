@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     VK_TOKEN: str
     BARK_TOKEN: str
+    BARK_URL: str = "https://api.day.app"
 
     model_config = SettingsConfigDict(
         env_file=".env",

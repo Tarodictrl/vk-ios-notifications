@@ -17,6 +17,12 @@ from src.settings.constants import (
     VK_IM,
     CHAT_ID_OFFSET,
     AUTH_ERROR_CODES,
+    ATTACHMENT_NAMES,
+    GEO_NAME,
+    FORWARDED_NAME,
+    REPLY_NAME,
+    UNKNOWN_ATTACHMENT_NAME,
+    READ_CHECK_DELAY,
     REQUEST_TIMEOUT,
     LONG_POLL_WAIT,
     RECONNECT_DELAY,
@@ -81,6 +87,10 @@ class VKListener():
         disabled_until = push_settings.get("disabled_until") or 0
         return disabled_until == -1 or disabled_until > time.time()
 
+    def _is_read(self, peer_id: int, message_id: int) -> bool:
+        in_read = self._get_conversation(peer_id).get("in_read") or 0
+        return in_read >= message_id
+
     def _get_sender(self, from_id: int) -> tuple[str, str, str]:
         if from_id in self._senders_cache:
             return self._senders_cache[from_id]
@@ -115,6 +125,21 @@ class VKListener():
         self._senders_cache[from_id] = sender
         return sender
 
+    def _describe_message(self, message: dict[dict, ...]) -> str:
+        names: list[str] = []
+        for attachment in message.get("attachments") or []:
+            attachment_type = attachment.get("type") or ""
+            name = ATTACHMENT_NAMES.get(attachment_type, UNKNOWN_ATTACHMENT_NAME)
+            if name not in names:
+                names.append(name)
+        if message.get("fwd_messages"):
+            names.append(FORWARDED_NAME)
+        elif message.get("reply_message"):
+            names.append(REPLY_NAME)
+        if message.get("geo"):
+            names.append(GEO_NAME)
+        return ", ".join(names) or UNKNOWN_ATTACHMENT_NAME
+
     def _handle_update(self, update: list) -> None:
         if not update or update[0] != VKPollEvents.NEW_MESSAGE_EVENT:
             return
@@ -131,13 +156,17 @@ class VKListener():
         if self._is_muted(conversation):
             logger.info(f"Уведомления в диалоге {peer_id} отключены, пропускаю сообщение")
             return
+        time.sleep(READ_CHECK_DELAY)
+        if peer_id and self._is_read(peer_id, message_id):
+            logger.info(f"Сообщение {message_id} уже прочитано, пропускаю")
+            return
         name, icon, url = self._get_sender(message["from_id"])
         if peer_id >= CHAT_ID_OFFSET:
             chat_settings: dict = conversation.get("chat_settings") or {}
             chat_photo: dict = chat_settings.get("photo") or {}
             icon = chat_photo.get("photo_100") or icon
             url = f"{VK_IM}c{peer_id - CHAT_ID_OFFSET}"
-        body = message.get("text") or "Вложение"
+        body = message.get("text") or self._describe_message(message)
         self._bark.notification(title=name, body=body, icon=icon, url=url)
         logger.info(f"Новое сообщение от {name}: {body}")
 
@@ -195,6 +224,6 @@ class VKListener():
 
 
 if __name__ == "__main__":
-    bark = Bark(token=settings.BARK_TOKEN)
+    bark = Bark(token=settings.BARK_TOKEN, bark_url=settings.BARK_URL)
     listener = VKListener(token=settings.VK_TOKEN, bark=bark)
     listener.listen()

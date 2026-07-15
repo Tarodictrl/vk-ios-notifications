@@ -8,7 +8,7 @@ from src.settings.config import settings
 
 
 def main() -> None:
-    bark = Bark(token=settings.BARK_TOKEN)
+    bark = Bark(token=settings.BARK_TOKEN, bark_url=settings.BARK_URL)
     listener = VKListener(token=settings.VK_TOKEN, bark=bark)
     try:
         listener.listen()

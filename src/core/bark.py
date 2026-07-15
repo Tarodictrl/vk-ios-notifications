@@ -12,10 +12,9 @@ from src.settings.constants import (
 
 
 class Bark():
-    _url: str = "https://api.day.app"
-
-    def __init__(self, token: str) -> None:
+    def __init__(self, token: str, bark_url: str) -> None:
         self._token = token
+        self._url = bark_url
         self._session = session()
 
     def notification(
@@ -49,5 +48,5 @@ class Bark():
 
 
 if __name__ == "__main__":
-    bark = Bark(token=settings.BARK_TOKEN)
+    bark = Bark(token=settings.BARK_TOKEN, bark_url=settings.BARK_URL)
     bark.notification("Test", "Message")
